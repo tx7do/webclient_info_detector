@@ -1,0 +1,322 @@
+﻿
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="ub-checkinfo" content="checkinfo">
+        <title>Check Version 1.0.44</title>
+        <script type="text/javascript" src="js/jquery.min.js"></script>
+        <script type="text/javascript" src="js/swfobject.js"></script>
+        <script type="text/javascript">
+var RunningId = 0; 
+var RunningChar = [' / ',' - ',' \\ ',' | '];
+var RunningCharIndex = 0;
+var JsonLoadRetry = 0;
+var JsonLoadRetryMax = 20;
+           
+$(document).ready(function() {
+    $('#title').text('请稍候。');
+    
+    setRunning( true);
+    
+    //檢查 JSON 是否可用 (IE6 IE7 IE8(Q) 沒有 JSON)
+    if (typeof (JSON) == 'undefined') {
+        $('head').append($('<script type="text/javascript" src="js/json2.js">'));
+    }
+    postData();
+    
+    if( swfobject.getFlashPlayerVersion().major == 0) {
+        $('#flash').text( '您没有安装 flash player');
+        $('#getflash').removeClass('hide');
+    }
+
+});
+
+function postData() {
+    if (typeof (JSON) == 'undefined') {
+        if( JsonLoadRetry < JsonLoadRetryMax) {
+            JsonLoadRetry = JsonLoadRetry + 1;
+            setTimeout( postData, 1000);
+        }
+        else {
+            setRunning( false);
+            setTimeout( setFailed, 500);
+        }
+        return;
+    }
+
+    //若為寰宇瀏覽器須等待瀏覽器載入checkinfo js檔案
+    if (typeof bbpage == 'object' && typeof checkinfo == 'undefined') {
+        setTimeout( postData, 500);
+        return;
+    }
+    
+    var Client = new CClient_Information();
+    
+    $tmp = $.post( './info.php',
+            {Json:Client.toJson(), action:'add'},
+            function(data) {
+            	console.log('recv data:', data);
+                setRunning(false);
+                setDone(data.code);
+                proxyInfo = '';
+                if (data.proxyType == 1) {
+                    proxyInfo = '(真实)';
+                }
+                if (data.proxyType == 2) {
+                    proxyInfo = '(代理)';
+                }
+                $('#ip').text( '您的IP地址' + proxyInfo + '：' + data.ip);
+            },
+            'json'
+    )
+    .error( function(xhr, textStatus, error) {
+		console.log(xhr.statusText);
+		console.log(textStatus);
+		console.log(error);
+		setRunning(false);
+		setTimeout(setFailed, 500);
+    });
+}
+
+function setRunning( run) {
+    if( run) {
+        if( RunningId != 0) {
+            clearInterval( RunningId);
+            RunningId = 0;
+        }
+        RunningId = setInterval( doRunning, 250);
+    }
+    else {
+        clearInterval( RunningId);
+        RunningId = 0;
+    }
+}
+
+function doRunning() {
+    $('#watting').text( RunningChar[RunningCharIndex]);
+    RunningCharIndex = RunningCharIndex +1;
+    if( RunningCharIndex == RunningChar.length) {
+        RunningCharIndex = 0;
+    }
+}
+
+function setDone( code) {
+    $('#title').text('');
+    $('#watting').text('数据编号:' + code);
+}
+
+function setFailed() {
+    Retry = $('<span></span>');
+    Retry.addClass('retry');
+    Retry.text('重试');
+    Retry.click( function(){
+        location.reload();
+    });
+    
+    DateObject = new Date();
+    $('#title').text('解析失败 - ' + DateObject.toLocaleTimeString());
+    $('#watting').html('');
+    Retry.appendTo( $('#watting'));
+}
+
+function CClient_Information() {
+    
+    this.FlashVersion = '';
+    this.UserAgent = navigator.userAgent;
+    this.Platform = navigator.platform;
+    this.OsVersion = '';
+    this.BrowserName = 'Other';
+    this.BrowserVersion = '';
+    this.CookieEnable = navigator.cookieEnabled;
+    this.JavaEnable = navigator.javaEnabled();
+    this.ScreenWidth = screen.width;
+    this.ScreenHeight = screen.height;
+    this.Referer = document.referrer;
+    this.IE = '';
+    this.PluginNames = [];
+    this.ubDataVersion = '';
+    
+    this.init = function() {
+        this.FlashVersion = this.getFlashVersion();
+        this.OsVersion = this.getOsVersion();
+        BrowserInformation = this.getBrowserInformation();
+        this.BrowserName = BrowserInformation.name;
+        this.BrowserVersion = BrowserInformation.version;
+        
+        this.IE = $('#test-ie').text();
+
+        // IE 10
+        /*@cc_on
+         if (/^10/.test(@_jscript_version)) {
+            this.IE = "IE 10";
+         }
+         @*/
+
+        // IE 11
+        if (!(window.ActiveXObject) && "ActiveXObject" in window) {
+            this.IE = "IE 11";
+        }
+        
+        if( typeof( navigator.plugins) != 'undefined') {
+            PluginArray = navigator.plugins;
+            PluginCount = PluginArray.length;
+            for( i=0;i<PluginCount;i=i+1) {
+                this.PluginNames.push( navigator.plugins[i].name);
+            }
+        }
+        
+        if( this.Referer == '') {
+            this.Referer = 'none';
+        }
+
+        this.ubDataVersion = 'none';
+        if (typeof checkinfo == 'object') {
+            this.ubDataVersion = checkinfo.dataVersion;
+        }
+    }
+    
+    this.getFlashVersion = function (){
+        if( typeof( swfobject) == 'undefined') {
+            return '';
+        }
+        FlashVersionObject = swfobject.getFlashPlayerVersion();
+        FlashVersionString = ''
+            + FlashVersionObject.major
+            + '.'
+            + FlashVersionObject.minor
+            + '.'
+            + FlashVersionObject.release;
+        return FlashVersionString;
+    }
+    
+    this.getOsVersion = function() {
+        Version = '0';
+        if( /^win/i.test(this.Platform)) {
+            RegexOs = /Windows NT ([^;]+)/i;
+            Matchs = RegexOs.exec( this.UserAgent);
+            if( Matchs.length > 1) {
+                switch( Matchs[1]) {
+                    case '5.0':
+                        Version = 'Windows 2000';
+                        break;
+                    case '5.1':
+                        Version = 'Windows XP';
+                        break;
+                    case '5.2':
+                        Version = 'Windows XP';
+                        break;
+                    case '6.0':
+                        Version = 'Windows Vista';
+                        break;
+                    case '6.1':
+                        Version = 'Windows 7';
+                        break;
+                    case '6.2':
+                        Version = 'Windows 8';
+                        break;
+                    default:
+                        Version = 'Windows NT ' + Matchs[1];
+                        break;
+                }
+            }
+        }
+        return Version;
+    }
+    
+    this.getBrowserInformation = function() {
+        Name = 'Other';
+        Version = '0';
+
+        // 同時有瀏覽器名稱與版本資訊
+        RegexBrowser = /(MSIE|Opera|Firefox|Chrome|BBBrowser|UB|UCBrowser|UCWEB|UBrowser|QHBrowser|QQBrowser|Oppo[^(\/)]+|Puffin)(\s|\/)([^(;|\s|\/)]+)/ig;
+        if( RegexBrowser.test( this.UserAgent)) {
+            MatchBrowsers = this.UserAgent.match(RegexBrowser);
+            MatchBrowser = MatchBrowsers.pop();
+            Matchs = RegexBrowser.exec(MatchBrowser);
+            if( Matchs.length == 4) {
+                Name = Matchs[1];
+                Version = Matchs[3];
+            }
+        }
+        // 只有瀏覽器名稱，未附版本資訊
+        RegexBrowserNameOnly = /(360Browser|360SE)/i;
+        if( RegexBrowserNameOnly.test( this.UserAgent)) {
+            Matchs = RegexBrowserNameOnly.exec(this.UserAgent);
+            if( Matchs.length == 2) {
+                Name = Matchs[1];
+                Version = '0';
+            }
+        }
+        return {version:Version, name:Name};
+    }
+	
+    this.toJson = function (){
+        ReturnObject = {};
+        ReturnObject.FlashVersion = this.FlashVersion;
+        ReturnObject.UserAgent = this.UserAgent;
+        ReturnObject.Platform = this.Platform;
+        ReturnObject.OsVersion = this.OsVersion;
+        ReturnObject.BrowserName = this.BrowserName;
+        ReturnObject.BrowserVersion = this.BrowserVersion;
+        ReturnObject.UbDataVersion = this.ubDataVersion;
+        ReturnObject.IE = this.IE;
+        ReturnObject.CookieEnable = this.CookieEnable;
+        ReturnObject.JavaEnable = this.JavaEnable;
+        ReturnObject.ScreenWidth = this.ScreenWidth;
+        ReturnObject.ScreenHeight = this.ScreenHeight;
+        JsDate = new Date();
+        ReturnObject.Timestamp = parseInt(JsDate.getTime()/1000);
+        ReturnObject.Referer = this.Referer;
+        ReturnObject.advanced = {};
+        ReturnObject.advanced.PluginNames = this.PluginNames;
+        return JSON.stringify( ReturnObject);
+    }
+    
+    this.init();
+}
+
+        </script>
+        <style>
+body {
+    text-align: center;
+}
+.retry {
+    color: blue;
+    cursor: pointer;
+}
+#flash {
+    color: red;
+}
+.hide {
+    display: none;
+}
+        </style>
+    </head>
+    <body>
+        <h3 id="title"></h3>
+        <h1 id="watting"></h1>
+        <h3 id="ip"></h3>
+        <h3>
+            <span id="flash"></span>
+            <span id="getflash" class ="hide"><a href="http://get.adobe.com/cn/flashplayer/" target="_blank">Flash Player下载</a></span>
+        </h3>
+        <div style="display: none;">
+        <!--[if IE 6]>
+        <span id="test-ie">IE 6</span>
+        <![endif]-->
+        <!--[if IE 7]>
+        <span id="test-ie">IE 7</span>
+        <![endif]-->
+        <!--[if IE 8]>
+        <span id="test-ie">IE 8</span>
+        <![endif]-->
+        <!--[if IE 9]>
+        <span id="test-ie">IE 9</span>
+        <![endif]-->
+        <!--[if !IE]>-->
+        <span id="test-ie">Not IE</span>
+        <!--<![endif]-->
+        </div>
+    </body>
+</html>
